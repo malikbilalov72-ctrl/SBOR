@@ -1,7 +1,7 @@
 {
   "name": "Сбор денег",
   "short_name": "Сбор денег",
-  "description": "Учёт взносов и расходов семейной кассы. Работает офлайн.",
+  "description": "Учёт взносов и расходов. Данные синхронизируются с облаком.",
   "lang": "ru",
   "dir": "ltr",
   "start_url": "./",
@@ -11,20 +11,6 @@
   "orientation": "any",
   "background_color": "#f4f6fb",
   "theme_color": "#f4f6fb",
-  "categories": ["finance", "productivity", "utilities"],
-  "prefer_related_applications": false,
-  "icons": [
-    {
-      "src": "icons/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "icons/icon-maskable.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    }
-  ]
+  "categories": ["finance", "productivity"],
+  "prefer_related_applications": false
 }
