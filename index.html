@@ -9,12 +9,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Сбор денег">
 <meta name="format-detection" content="telephone=no">
-<meta name="description" content="Учёт взносов и расходов семейной кассы. Работает офлайн.">
+<meta name="description" content="Учёт взносов и расходов семейной кассы. Данные синхронизируются с облаком.">
 <title>Сбор денег</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon.svg">
-<link rel="apple-touch-icon" sizes="180x180" href="icons/icon.svg">
 <style>
 :root{
   --bg:#f4f6fb;--panel:#fff;--panel-2:#f7f9fd;--text:#1b2333;--muted:#6b7690;
@@ -51,6 +48,11 @@ body{
 h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.2px}
 .sub{font-size:12px;color:var(--muted);margin-top:1px}
 .top-actions{display:flex;gap:8px;align-items:center}
+.sync-status{
+  width:24px;height:24px;display:inline-grid;place-items:center;
+  font-size:15px;font-weight:800;color:var(--muted);
+  transition:color .2s;cursor:default;user-select:none;
+}
 .select,.input,textarea.input{
   font:inherit;color:var(--text);background:var(--panel);
   border:1px solid var(--border);border-radius:10px;padding:10px 12px;outline:none;
@@ -177,9 +179,6 @@ tfoot th.name-cell{
 }
 .list-btn:active{background:var(--panel-2)}
 .list-btn.danger{color:var(--danger);border-color:var(--danger)}
-.year-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px}
-.chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--border);border-radius:99px;padding:7px 12px;font-size:13px;font-weight:600}
-.chip button{border:none;background:none;color:var(--danger);font-size:17px;line-height:1;cursor:pointer;padding:0 2px;touch-action:manipulation}
 .rate-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
 .rate-row{display:flex;gap:8px;align-items:center;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
 .rate-row .year-label{font-weight:700;min-width:52px;font-size:14px}
@@ -204,9 +203,11 @@ tfoot th.name-cell{
 .banner button{margin-left:auto;background:var(--warn);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-weight:700;font-size:13px;cursor:pointer;touch-action:manipulation}
 .banner.info{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .banner.info button{background:var(--accent);color:#fff}
+.banner.err{background:var(--danger-soft);border-color:var(--danger);color:var(--danger)}
+.banner.err button{background:var(--danger);color:#fff}
 @media print{
   :root{--bg:#fff;--panel:#fff;--panel-2:#fff;--text:#000;--muted:#555;--border:#bbb}
-  .top-actions,.toolbar,.hint,.progress,.progress-line,.overlay,.row-btn,.expense-del,.section-head .btn,.banner,.toast-host{display:none!important}
+  .top-actions,.toolbar,.hint,.progress,.progress-line,.overlay,.row-btn,.expense-del,.section-head .btn,.banner,.toast-host,.sync-status{display:none!important}
   body{background:#fff}.app{padding:0;max-width:none}
   .table-wrap{max-height:none;overflow:visible;border:none;box-shadow:none}
   .stat{box-shadow:none}th,td{font-size:11px!important}
@@ -223,9 +224,9 @@ tfoot th.name-cell{
     <button id="installBannerBtn">Как?</button>
   </div>
 
-  <div class="banner" id="backupBanner" style="display:none">
-    <span>Давно не делали резервную копию. Сохранить?</span>
-    <button id="backupNowBtn">Сделать</button>
+  <div class="banner err" id="syncBanner" style="display:none">
+    <span id="syncBannerText">Ошибка синхронизации.</span>
+    <button id="syncRetryBtn">Повторить</button>
   </div>
 
   <header class="topbar">
@@ -237,6 +238,7 @@ tfoot th.name-cell{
       </div>
     </div>
     <div class="top-actions">
+      <span class="sync-status" id="syncStatus" title="Синхронизация">○</span>
       <select class="select" id="yearSelect" aria-label="Год"></select>
       <button class="icon-btn" id="themeBtn" aria-label="Сменить тему">🌙</button>
       <button class="icon-btn" id="menuBtn" aria-label="Меню">☰</button>
@@ -316,6 +318,7 @@ tfoot th.name-cell{
   <div class="sheet">
     <h2>Меню</h2>
     <button class="list-btn" id="installBtn" style="display:none">📲 Установить приложение</button>
+    <button class="list-btn" id="syncNowBtn">🔄 Синхронизировать сейчас</button>
     <button class="list-btn" id="shareBtn">📤 Поделиться отчётом</button>
     <button class="list-btn" id="copyBtn">📋 Скопировать итоги в буфер</button>
     <button class="list-btn" id="expJson">💾 Резервная копия (JSON)</button>
@@ -335,6 +338,14 @@ tfoot th.name-cell{
       <span>Размер взноса по годам (можно менять для каждого года отдельно)</span>
       <div class="rate-list" id="rateList"></div>
       <button class="btn small" id="addYearBtn">+ Добавить год</button>
+    </div>
+    <div class="field" style="margin-top:18px">
+      <span>Синхронизация</span>
+      <div style="font-size:13px;color:var(--muted);line-height:1.7">
+        Данные автоматически сохраняются в облако.<br>
+        Все устройства с этой ссылкой видят одни и те же данные.
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;word-break:break-all;font-family:ui-monospace,Menlo,monospace" id="syncUrlLabel"></div>
     </div>
     <div class="sheet-actions">
       <button class="btn" id="setCancel">Отмена</button>
@@ -384,16 +395,27 @@ tfoot th.name-cell{
 <input type="file" id="fileInput" accept=".json,application/json" hidden>
 
 <script>
-/* ================= СБОР ДЕНЕГ · PWA для iOS =================
-   Данные хранятся локально (localStorage).
-   Версия: 3.1-PWA
-   ============================================================ */
+/* ==================================================================
+   СБОР ДЕНЕГ · PWA + Firebase Realtime Database
+   ------------------------------------------------------------------
+   • Все изменения мгновенно сохраняются в облако (Firebase RTDB)
+   • Realtime-синхронизация между устройствами через EventSource (SSE)
+   • Локальная копия в localStorage — для быстрого старта и офлайна
+   ================================================================== */
+
+/* =============== НАСТРОЙКИ FIREBASE =============== */
+const FB_BASE_URL = 'https://kmch-12d8d-default-rtdb.europe-west1.firebasedatabase.app';
+const FB_NODE     = 'sbor-dengi';   // узел в базе данных
+const FB_URL      = `${FB_BASE_URL}/${FB_NODE}.json`;
+
+/* =============== КОНСТАНТЫ =============== */
 const MONTHS_SHORT=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 const MONTHS_FULL=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const CATEGORIES=['Похороны','Праздник','Помощь','Продукты','Транспорт','Здоровье','Прочее'];
 const STORE_KEY='familyFund.v3';
 const THEME_KEY='familyFund.theme';
 const INSTALL_DISMISS_KEY='familyFund.installDismissed';
+const CLIENT_ID_KEY='familyFund.clientId';
 const DEFAULT_RATE=500;
 
 const $=id=>document.getElementById(id);
@@ -405,7 +427,7 @@ function todayISO(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `${
 function fmtDate(iso){if(!iso)return'';const p=String(iso).split('-');return p.length===3?`${p[2]}.${p[1]}.${p[0]}`:iso;}
 function currentMonthIndex(){return new Date().getMonth();}
 
-/* ---------- модальные диалоги (без native) ---------- */
+/* =============== МОДАЛЬНЫЕ ДИАЛОГИ =============== */
 function openModal(el){el.classList.add('open');document.body.style.overflow='hidden';}
 function closeModal(el){el.classList.remove('open');document.body.style.overflow='';}
 document.querySelectorAll('.overlay').forEach(ov=>ov.addEventListener('click',e=>{if(e.target===ov)closeModal(ov);}));
@@ -455,7 +477,7 @@ function toast(msg,{actionLabel,onAction,duration=5000}={}){
   setTimeout(()=>{el.style.opacity='0';el.style.transform='translateY(10px)';el.style.transition='all .2s';setTimeout(()=>el.remove(),250);},duration);
 }
 
-/* ---------- состояние ---------- */
+/* =============== СОСТОЯНИЕ =============== */
 function defaultState(){
   const y=new Date().getFullYear();
   return{
@@ -463,30 +485,200 @@ function defaultState(){
     participants:[],payments:{},expenses:[],ui:{search:''},lastBackup:null
   };
 }
+function migrateState(raw){
+  const s=raw||{};
+  const d=defaultState();
+  const out=Object.assign(d,s);
+  out.years=Array.isArray(out.years)&&out.years.length?out.years.map(Number):[new Date().getFullYear()];
+  out.participants=(Array.isArray(out.participants)?out.participants:[]).map(p=>({
+    id:p.id||uid('p'), name:p.name||'Без имени', note:p.note||''
+  }));
+  out.payments=out.payments&&typeof out.payments==='object'?out.payments:{};
+  out.expenses=(Array.isArray(out.expenses)?out.expenses:[]).map(e=>({
+    id:e.id||uid('e'), date:e.date||todayISO(),
+    amount:Number(e.amount)||0, note:e.note||'', category:e.category||'Прочее'
+  }));
+  out.rates=out.rates&&typeof out.rates==='object'?out.rates:{};
+  if(s&&typeof s.rate==='number'){
+    out.years.forEach(y=>{if(!out.rates[String(y)])out.rates[String(y)]=s.rate;});
+  }
+  out.years.forEach(y=>{if(!out.rates[String(y)])out.rates[String(y)]=DEFAULT_RATE;});
+  out.ui=out.ui&&typeof out.ui==='object'?out.ui:{search:''};
+  out.currency=out.currency||'₽';
+  if(!out.years.includes(out.currentYear))out.currentYear=out.years[out.years.length-1];
+  const nowY=new Date().getFullYear();
+  if(!out.years.includes(nowY)){
+    out.years.push(nowY);
+    if(!out.rates[String(nowY)])out.rates[String(nowY)]=DEFAULT_RATE;
+  }
+  out.years.sort((a,b)=>a-b);
+  return out;
+}
 let state=loadState()||defaultState();
 function loadState(){
   try{
-    const raw=localStorage.getItem(STORE_KEY)||localStorage.getItem('familyFund.v2')||localStorage.getItem('familyFund.v1');
+    const raw=localStorage.getItem(STORE_KEY)
+           ||localStorage.getItem('familyFund.v2')
+           ||localStorage.getItem('familyFund.v1');
     if(!raw)return null;
-    const s=JSON.parse(raw);const d=defaultState();const out=Object.assign(d,s);
-    out.years=Array.isArray(out.years)&&out.years.length?out.years.map(Number):[new Date().getFullYear()];
-    out.participants=(Array.isArray(out.participants)?out.participants:[]).map(p=>({id:p.id||uid('p'),name:p.name||'Без имени',note:p.note||''}));
-    out.payments=out.payments&&typeof out.payments==='object'?out.payments:{};
-    out.expenses=(Array.isArray(out.expenses)?out.expenses:[]).map(e=>({id:e.id||uid('e'),date:e.date||todayISO(),amount:Number(e.amount)||0,note:e.note||'',category:e.category||'Прочее'}));
-    out.rates=out.rates&&typeof out.rates==='object'?out.rates:{};
-    if(s&&typeof s.rate==='number'){out.years.forEach(y=>{if(!out.rates[String(y)])out.rates[String(y)]=s.rate;});}
-    out.years.forEach(y=>{if(!out.rates[String(y)])out.rates[String(y)]=DEFAULT_RATE;});
-    out.ui=out.ui&&typeof out.ui==='object'?out.ui:{search:''};
-    out.currency=out.currency||'₽';
-    if(!out.years.includes(out.currentYear))out.currentYear=out.years[out.years.length-1];
-    const nowY=new Date().getFullYear();
-    if(!out.years.includes(nowY)){out.years.push(nowY);if(!out.rates[String(nowY)])out.rates[String(nowY)]=DEFAULT_RATE;}
-    out.years.sort((a,b)=>a-b);
-    return out;
+    return migrateState(JSON.parse(raw));
   }catch(e){console.warn('load error',e);return null;}
 }
-function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(e){toast('Не удалось сохранить: '+e.message);}}
 
+/* =============== FIREBASE SYNC =============== */
+let CLIENT_ID=localStorage.getItem(CLIENT_ID_KEY);
+if(!CLIENT_ID){
+  CLIENT_ID='c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  localStorage.setItem(CLIENT_ID_KEY,CLIENT_ID);
+}
+let syncES=null;
+let pushTimer=null;
+let isPushing=false;
+let lastAppliedUpdatedAt=0;
+let syncReady=false;
+
+function setSyncStatus(s){
+  const el=$('syncStatus');
+  if(!el)return;
+  const map={
+    idle:    {t:'○',c:'var(--muted)',  h:'Синхронизация: ожидание'},
+    syncing: {t:'⟳',c:'var(--accent)', h:'Синхронизация: отправка…'},
+    synced:  {t:'●',c:'var(--ok)',     h:'Все изменения сохранены'},
+    error:   {t:'!',c:'var(--danger)', h:'Ошибка синхронизации'},
+    offline: {t:'—',c:'var(--muted)',  h:'Нет сети — работаем офлайн'}
+  };
+  const m=map[s]||map.idle;
+  el.textContent=m.t;
+  el.style.color=m.c;
+  el.title=m.h;
+
+  const banner=$('syncBanner');
+  if(s==='error'){
+    banner.style.display='flex';
+    $('syncBannerText').textContent='Не удалось сохранить в облако. Проверьте интернет.';
+  }else if(s==='offline'){
+    banner.style.display='flex';
+    $('syncBannerText').textContent='Нет связи — изменения сохраняются локально и отправятся позже.';
+  }else{
+    banner.style.display='none';
+  }
+}
+
+async function pushRemote(force=false){
+  if(!navigator.onLine){setSyncStatus('offline');return;}
+  if(isPushing&&!force)return;
+  isPushing=true;
+  setSyncStatus('syncing');
+  try{
+    const payload={
+      clientId:CLIENT_ID,
+      updatedAt:Date.now(),
+      data:state
+    };
+    const res=await fetch(FB_URL,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+      cache:'no-store'
+    });
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    lastAppliedUpdatedAt=payload.updatedAt;
+    setSyncStatus('synced');
+  }catch(e){
+    console.warn('push error',e);
+    setSyncStatus('error');
+  }finally{
+    isPushing=false;
+  }
+}
+function schedulePush(){
+  if(pushTimer)clearTimeout(pushTimer);
+  pushTimer=setTimeout(()=>pushRemote(),600);
+}
+async function pullRemote(){
+  try{
+    const res=await fetch(FB_URL,{cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const json=await res.json();
+    return (json&&json.data)?json:null;
+  }catch(e){
+    console.warn('pull error',e);
+    return null;
+  }
+}
+function applyRemotePayload(payload){
+  if(!payload||!payload.data)return false;
+  if(payload.clientId===CLIENT_ID)return false;
+  const ts=Number(payload.updatedAt)||0;
+  if(ts<=lastAppliedUpdatedAt)return false;
+  lastAppliedUpdatedAt=ts;
+  try{localStorage.setItem(STORE_KEY,JSON.stringify(payload.data));}catch(_){}
+  state=migrateState(payload.data);
+  return true;
+}
+function subscribeRemote(){
+  if(syncES){try{syncES.close();}catch(_){}}
+  try{syncES=new EventSource(FB_URL);}catch(e){return;}
+  syncES.addEventListener('open',()=>{syncReady=true;setSyncStatus('synced');});
+  syncES.addEventListener('error',()=>{
+    syncReady=false;
+    if(!navigator.onLine)setSyncStatus('offline');
+    else setSyncStatus('error');
+  });
+  syncES.onmessage=(ev)=>{
+    if(!ev.data||ev.data==='null')return;
+    let msg;
+    try{msg=JSON.parse(ev.data);}catch(_){return;}
+    if(!msg||typeof msg!=='object')return;
+    if(msg.path!=='/')return;
+    const payload=msg.data;
+    if(!payload||!payload.data)return;
+    if(applyRemotePayload(payload)){
+      renderAll();
+    }
+  };
+}
+async function initRemote(){
+  setSyncStatus('syncing');
+  const remote=await pullRemote();
+  if(remote&&remote.data){
+    if(remote.clientId===CLIENT_ID){
+      lastAppliedUpdatedAt=Number(remote.updatedAt)||0;
+    }else if(Number(remote.updatedAt)>0){
+      lastAppliedUpdatedAt=Number(remote.updatedAt);
+      try{localStorage.setItem(STORE_KEY,JSON.stringify(remote.data));}catch(_){}
+      state=migrateState(remote.data);
+      renderAll();
+    }
+    setSyncStatus('synced');
+  }else{
+    await pushRemote(true);
+  }
+  subscribeRemote();
+}
+async function syncNow(){
+  const remote=await pullRemote();
+  if(remote&&remote.data&&remote.clientId!==CLIENT_ID&&
+     Number(remote.updatedAt)>lastAppliedUpdatedAt){
+    lastAppliedUpdatedAt=Number(remote.updatedAt);
+    try{localStorage.setItem(STORE_KEY,JSON.stringify(remote.data));}catch(_){}
+    state=migrateState(remote.data);
+    renderAll();
+    toast('Загружено с сервера');
+    return;
+  }
+  await pushRemote(true);
+  toast('Отправлено на сервер');
+}
+
+/* =============== СОХРАНЕНИЕ =============== */
+function save(){
+  try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}
+  catch(e){toast('Не удалось сохранить локально: '+e.message);}
+  schedulePush();
+}
+
+/* =============== РАСЧЁТЫ =============== */
 function getRate(year){return Number(state.rates[String(year)])||DEFAULT_RATE;}
 function getYearPayments(year){
   const key=String(year);if(!state.payments[key])state.payments[key]={};
@@ -504,7 +696,7 @@ function collectedTotal(){return state.years.reduce((s,y)=>s+collectedForYear(y)
 function expensesTotal(){return state.expenses.reduce((s,e)=>s+(Number(e.amount)||0),0);}
 function balance(){return collectedTotal()-expensesTotal();}
 
-/* ---------- тема ---------- */
+/* =============== ТЕМА =============== */
 function applyTheme(t){
   document.documentElement.setAttribute('data-theme',t);
   $('themeBtn').textContent=t==='dark'?'☀️':'🌙';
@@ -522,8 +714,11 @@ $('themeBtn').onclick=()=>{
   localStorage.setItem(THEME_KEY,next);applyTheme(next);
 };
 
-/* ---------- рендер ---------- */
-function renderAll(){renderYearSelect();renderHead();renderTable();renderFooter();updateStats();renderSubline();renderExpenses();renderBackupBanner();}
+/* =============== РЕНДЕР =============== */
+function renderAll(){
+  renderYearSelect();renderHead();renderTable();renderFooter();
+  updateStats();renderSubline();renderExpenses();renderBackupBanner();
+}
 function renderYearSelect(){
   const years=[...state.years].sort((a,b)=>b-a);
   $('yearSelect').innerHTML=years.map(y=>`<option value="${y}"${y===state.currentYear?' selected':''}>${y} год</option>`).join('');
@@ -580,15 +775,9 @@ function renderSubline(){
   const n=state.participants.length;
   $('subline').textContent=`${state.currentYear} · ${n} ${plural(n,'участник','участника','участников')} · ${fmtNum(getRate(state.currentYear))} ${state.currency}/мес`;
 }
-function renderBackupBanner(){
-  const b=$('backupBanner');
-  const last=state.lastBackup?new Date(state.lastBackup).getTime():0;
-  const days=(Date.now()-last)/(1000*60*60*24);
-  b.style.display=(state.participants.length>0&&days>30)?'flex':'none';
-}
-$('backupNowBtn').onclick=()=>exportJson();
+function renderBackupBanner(){/* авто-резерв больше не нужен: всё в облаке */}
 
-/* ---------- расходы ---------- */
+/* =============== РАСХОДЫ =============== */
 function renderExpenses(){
   const ySel=$('expFilterYear'),cSel=$('expFilterCat');
   const prevY=ySel.value,prevC=cSel.value;
@@ -639,7 +828,7 @@ $('expensesList').addEventListener('click',async e=>{
   if(row)openExpense(row.dataset.expId);
 });
 
-/* ---------- участник ---------- */
+/* =============== УЧАСТНИК =============== */
 let editingId=null;
 function openParticipant(id){
   editingId=id||null;
@@ -658,7 +847,8 @@ $('partSave').onclick=()=>{
   const name=$('partName').value.trim();const note=$('partNote').value.trim();
   if(!name){$('partName').focus();return;}
   if(editingId){const p=state.participants.find(x=>x.id===editingId);if(p){p.name=name;p.note=note;}}
-  else{const p={id:uid('p'),name,note};state.participants.push(p);Object.keys(state.payments).forEach(y=>{state.payments[y][p.id]=new Array(12).fill(false);});}
+  else{const p={id:uid('p'),name,note};state.participants.push(p);
+    Object.keys(state.payments).forEach(y=>{state.payments[y][p.id]=new Array(12).fill(false);});}
   save();closeModal($('ovParticipant'));renderAll();
 };
 $('partDelete').onclick=async()=>{
@@ -682,7 +872,7 @@ $('partClear').onclick=()=>{if(!editingId)return;getYearPayments(state.currentYe
 $('partToday').onclick=()=>{if(!editingId)return;const m=currentMonthIndex();const arr=getYearPayments(state.currentYear)[editingId];arr[m]=!arr[m];save();closeModal($('ovParticipant'));renderAll();};
 $('partName').addEventListener('keydown',e=>{if(e.key==='Enter')$('partSave').click();});
 
-/* ---------- расход: создание/редактирование ---------- */
+/* =============== РАСХОД: создание/редактирование =============== */
 let editingExpId=null;
 function fillCategories(){
   const s=$('expCat');
@@ -712,7 +902,7 @@ $('expSave').onclick=()=>{
   save();closeModal($('ovExpense'));renderExpenses();updateStats();
 };
 
-/* ---------- таблица ---------- */
+/* =============== ТАБЛИЦА =============== */
 $('tbody').addEventListener('click',e=>{
   const btn=e.target.closest('.row-btn');if(btn){openParticipant(btn.dataset.id);return;}
   const cell=e.target.closest('td.cell');if(!cell)return;
@@ -727,12 +917,14 @@ $('tbody').addEventListener('click',e=>{
 $('yearSelect').addEventListener('change',e=>{state.currentYear=Number(e.target.value);save();renderAll();});
 $('searchInput').addEventListener('input',()=>renderTable());
 
-/* ---------- меню / настройки ---------- */
+/* =============== МЕНЮ / НАСТРОЙКИ =============== */
 $('menuBtn').onclick=()=>openModal($('ovMenu'));
 $('menuClose').onclick=()=>closeModal($('ovMenu'));
+$('syncNowBtn').onclick=()=>{closeModal($('ovMenu'));syncNow();};
 $('settingsBtn').onclick=()=>{
   closeModal($('ovMenu'));
   $('setCurrency').value=state.currency;
+  $('syncUrlLabel').textContent=FB_URL;
   renderRateList();
   openModal($('ovSettings'));
 };
@@ -779,7 +971,7 @@ $('setSave').onclick=()=>{
   save();closeModal($('ovSettings'));renderAll();
 };
 
-/* ---------- экспорт / импорт ---------- */
+/* =============== ЭКСПОРТ / ИМПОРТ =============== */
 function csvEsc(v){const s=String(v==null?'':v);return /[";\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 function buildCsv(year){
   const pays=getYearPayments(year);const cur=state.currency;const rate=getRate(year);
@@ -834,7 +1026,7 @@ function download(filename,content,mime){
 function exportJson(){
   const d=todayISO();
   download(`sbor-dengi-backup-${d}.json`,JSON.stringify(state,null,2),'application/json');
-  state.lastBackup=d;save();renderBackupBanner();
+  state.lastBackup=d;save();
 }
 $('expJson').onclick=()=>{exportJson();closeModal($('ovMenu'));toast('Копия сохранена');};
 $('impJson').onclick=()=>$('fileInput').click();
@@ -845,10 +1037,9 @@ $('fileInput').addEventListener('change',e=>{
     try{
       const data=JSON.parse(r.result);
       if(!data||!Array.isArray(data.participants))throw new Error('Неверный формат');
-      const ok=await confirmDialog('Заменить данные?','Текущие данные будут заменены содержимым файла.',{danger:true});
+      const ok=await confirmDialog('Заменить данные?','Текущие данные будут заменены содержимым файла (локально и в облаке).',{danger:true});
       if(!ok){e.target.value='';return;}
-      localStorage.setItem(STORE_KEY,JSON.stringify(data));
-      state=loadState()||defaultState();save();closeModal($('ovMenu'));renderAll();
+      state=migrateState(data);save();closeModal($('ovMenu'));renderAll();
       toast('Данные восстановлены');
     }catch(err){toast('Ошибка: '+err.message);}
     e.target.value='';
@@ -888,148 +1079,76 @@ $('copyBtn').onclick=async()=>{
   }catch(err){toast('Не удалось скопировать');}
 };
 $('resetBtn').onclick=async()=>{
-  const ok=await confirmDialog('Сбросить всё?','Все данные будут удалены. Резервную копию сделать не забудьте.',{danger:true});
+  const ok=await confirmDialog('Сбросить всё?','Данные будут удалены локально и в облаке.',{danger:true});
   if(!ok)return;
   const ok2=await confirmDialog('Точно?','Действие необратимо.',{danger:true});
   if(!ok2)return;
-  localStorage.removeItem(STORE_KEY);state=defaultState();save();closeModal($('ovMenu'));renderAll();toast('Данные сброшены');
+  localStorage.removeItem(STORE_KEY);
+  state=defaultState();
+  try{
+    await fetch(FB_URL,{method:'DELETE',cache:'no-store'});
+  }catch(_){}
+  save();closeModal($('ovMenu'));renderAll();toast('Данные сброшены');
 };
 
-/* ============================================================
-   PWA: иконки, service worker, установка
-   ============================================================ */
-
-/* ---------- Генерация PNG-иконок (для apple-touch-icon) ---------- */
-function makeIconPNG(size){
-  const c=document.createElement('canvas');
-  c.width=c.height=size;
-  const ctx=c.getContext('2d');
-
-  // фон с градиентом и скруглением
-  const r=size*0.225;
-  const g=ctx.createLinearGradient(0,0,size,size);
-  g.addColorStop(0,'#3b6ef6');
-  g.addColorStop(1,'#7a5cff');
-  ctx.fillStyle=g;
-  ctx.beginPath();
-  ctx.moveTo(r,0);
-  ctx.arcTo(size,0,size,size,r);
-  ctx.arcTo(size,size,0,size,r);
-  ctx.arcTo(0,size,0,0,r);
-  ctx.arcTo(0,0,size,0,r);
-  ctx.closePath();
-  ctx.fill();
-
-  // буква «С» (дуга)
-  ctx.strokeStyle='#ffffff';
-  ctx.lineWidth=size*0.115;
-  ctx.lineCap='round';
-  const cx=size/2, cy=size/2, rad=size*0.255;
-  const a=Math.PI/4;
-  ctx.beginPath();
-  ctx.arc(cx,cy,rad,-a,a,true);
-  ctx.stroke();
-
-  return c.toDataURL('image/png');
-}
-(function applyAppleIcons(){
-  try{
-    const sizes=[180,192,512];
-    const links=[];
-    sizes.forEach(s=>{
-      const l=document.createElement('link');
-      l.rel='apple-touch-icon';
-      l.sizes=`${s}x${s}`;
-      l.href=makeIconPNG(s);
-      document.head.appendChild(l);
-      links.push(l);
-    });
-    // favicon тоже заменим на PNG-версию
-    const fav=document.createElement('link');
-    fav.rel='icon';
-    fav.type='image/png';
-    fav.href=makeIconPNG(64);
-    document.head.appendChild(fav);
-  }catch(e){/* iOS всё равно возьмёт icons/icon.svg */}
-})();
-
-/* ---------- Регистрация service worker ---------- */
-let swRegistration=null;
+/* =============== PWA: SW + установка =============== */
 if('serviceWorker' in navigator && location.protocol!=='file:'){
   const hadController=!!navigator.serviceWorker.controller;
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('sw.js',{scope:'./'}).then(reg=>{
-      swRegistration=reg;
-
-      const watchWorker=(w)=>{
+      const watch=(w)=>{
         if(!w)return;
         w.addEventListener('statechange',()=>{
-          if(w.state==='installed' && navigator.serviceWorker.controller){
+          if(w.state==='installed'&&navigator.serviceWorker.controller){
             toast('Доступно обновление приложения',{
-              actionLabel:'Обновить',
-              duration:12000,
-              onAction:()=>{ w.postMessage({type:'SKIP_WAITING'}); }
+              actionLabel:'Обновить',duration:12000,
+              onAction:()=>w.postMessage({type:'SKIP_WAITING'})
             });
           }
         });
       };
-      if(reg.installing) watchWorker(reg.installing);
-      reg.addEventListener('updatefound',()=>watchWorker(reg.installing));
-
-      // периодически проверяем обновления
-      setInterval(()=>{ reg.update().catch(()=>{}); }, 60*60*1000);
+      if(reg.installing)watch(reg.installing);
+      reg.addEventListener('updatefound',()=>watch(reg.installing));
+      setInterval(()=>{reg.update().catch(()=>{});},60*60*1000);
     }).catch(err=>console.warn('SW register error',err));
-
     navigator.serviceWorker.addEventListener('controllerchange',()=>{
-      if(!hadController) return;
+      if(!hadController)return;
       location.reload();
     });
   });
 }
 
-/* ---------- Определение режима и платформы ---------- */
 function isStandalone(){
-  return window.navigator.standalone===true ||
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.matchMedia('(display-mode: fullscreen)').matches ||
-    window.matchMedia('(display-mode: minimal-ui)').matches;
+  return window.navigator.standalone===true
+    ||window.matchMedia('(display-mode: standalone)').matches
+    ||window.matchMedia('(display-mode: fullscreen)').matches
+    ||window.matchMedia('(display-mode: minimal-ui)').matches;
 }
 function isIOS(){
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    ||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 }
-
-/* ---------- iOS: инструкция по установке ---------- */
-function showInstallHint(){
-  openModal($('ovInstall'));
-}
+function showInstallHint(){openModal($('ovInstall'));}
 $('installClose').onclick=()=>closeModal($('ovInstall'));
 
-(function initInstallUI(){
-  if(isStandalone()) return;
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;});
 
-  const dismissed=localStorage.getItem(INSTALL_DISMISS_KEY)==='1';
+(function initInstallUI(){
+  if(isStandalone())return;
   const banner=$('installBanner');
   const btn=$('installBtn');
-
   if(isIOS()){
     banner.style.display='flex';
     $('installBannerText').textContent='Установите приложение: «Поделиться» → «На экран “Домой”».';
-    btn.style.display='';
-  }else if(!dismissed){
-    // на Android/desktop баннер покажем только при наличии beforeinstallprompt
   }
   btn.style.display='';
-  btn.onclick=()=>{ closeModal($('ovMenu')); showInstallHint(); };
-
+  btn.onclick=()=>{closeModal($('ovMenu'));showInstallHint();};
   $('installBannerBtn').onclick=async()=>{
     if(deferredPrompt){
       try{
         deferredPrompt.prompt();
-        const choice=await deferredPrompt.userChoice;
-        if(choice && choice.outcome==='accepted'){
-          localStorage.setItem(INSTALL_DISMISS_KEY,'1');
-        }
+        await deferredPrompt.userChoice;
       }catch(_){}
       deferredPrompt=null;
       banner.style.display='none';
@@ -1037,17 +1156,12 @@ $('installClose').onclick=()=>closeModal($('ovInstall'));
       showInstallHint();
     }
   };
-
-  // Android / Chrome — нативный диалог
-  window.addEventListener('beforeinstallprompt',e=>{
-    e.preventDefault();
-    deferredPrompt=e;
-    if(localStorage.getItem(INSTALL_DISMISS_KEY)==='1') return;
+  window.addEventListener('beforeinstallprompt',()=>{
+    if(localStorage.getItem(INSTALL_DISMISS_KEY)==='1')return;
     banner.style.display='flex';
     $('installBannerText').textContent='Установить «Сбор денег» на устройство?';
     $('installBannerBtn').textContent='Установить';
   });
-
   window.addEventListener('appinstalled',()=>{
     localStorage.setItem(INSTALL_DISMISS_KEY,'1');
     banner.style.display='none';
@@ -1056,14 +1170,26 @@ $('installClose').onclick=()=>closeModal($('ovInstall'));
     toast('Приложение установлено');
   });
 })();
-let deferredPrompt=null;
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;});
-window.addEventListener('appinstalled',()=>{deferredPrompt=null;});
 
-/* ---------- старт ---------- */
+/* =============== ONLINE/OFFLINE =============== */
+window.addEventListener('online',()=>{
+  setSyncStatus('idle');
+  pushRemote(true);
+  if(!syncES)subscribeRemote();
+});
+window.addEventListener('offline',()=>setSyncStatus('offline'));
+
+/* =============== ПЕРИОДИЧЕСКАЯ СИНХРОНИЗАЦИЯ =============== */
+setInterval(()=>{
+  if(navigator.onLine&&syncStatus==='error')pushRemote(true);
+},60000);
+
+/* =============== СТАРТ =============== */
 $('searchInput').value=state.ui.search||'';
 $('searchInput').addEventListener('input',()=>{state.ui.search=$('searchInput').value;save();});
-save();renderAll();
+renderAll();
+setSyncStatus('idle');
+initRemote();
 </script>
 </body>
 </html>
